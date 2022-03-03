@@ -1,0 +1,157 @@
+---
+title: "Github code"
+output:
+  html_document:
+    df_print: paged
+---
+
+Scientific Question: Given the significant reduction for the risk of breast cancer after obese patients undergo bariatric surgery, what specific genes are responsible for the reduced risk and how do the expression levels of these certain genes change after the surgery? 
+
+Hypothesis: If the levels of Estrogen Receptor Alpha decrease after bariatric surgery, then by analyzing the specific gene (ESR1) expression levels of this protein and associated pathways will show a marked change from pre-weight loss surgery levels that are responsible for the preventative phenotype against breast cancer.   
+
+The packages Edger and limma are used to filter out lowly expressed counts and to model the voom plot in RNA-seq and also EdgeR is used in Pathway analysis to gain access to cerrtain functions
+```{r}
+library(edgeR)
+library(limma)
+
+```
+
+The package msa used to align multiple sequences from a single fasta file with its function msa
+```{r}
+library(msa)
+```
+
+
+```{r}
+seqdata<- read.csv("/Users/heatherotto/Downloads/GSE126803_AI007_Readcounts.csv")
+seqdata
+```
+
+```{r}
+dim(seqdata)
+```
+
+```{r}
+countdata<- seqdata[,-(1)]
+countdata
+```
+
+```{r}
+rownames(countdata) <- seqdata[,1]
+head(countdata)
+```
+
+
+```{r}
+sampleinfo<- read.delim("/Users/heatherotto/Sampleinfo copy.txt", row.names= NULL)
+```
+
+```{r}
+colnames(sampleinfo) <- colnames(sampleinfo)[2:ncol(sampleinfo)]
+sampleinfo
+```
+```{r}
+sampleinfo<- sampleinfo[, -(3:4)]
+sampleinfo
+```
+```{r}
+y<- DGEList(countdata)
+y
+```
+
+```{r}
+group<- paste(sampleinfo$Surgery.Status, sep= ".")
+group
+```
+
+```{r}
+group<- factor(group)
+group
+```
+
+```{r}
+y$samples$group<- group
+y$samples
+```
+
+
+
+```{r}
+CPM<- cpm(countdata)
+head(CPM)
+```
+
+```{r}
+plot(CPM[,1], countdata[,1], ylim= c(0,50), xlim= c(0,30))
+abline(v= 18)
+
+```
+
+```{r}
+thresh<- CPM > 18
+head(thresh)
+```
+
+```{r}
+table(rowSums(thresh))
+keep<- rowSums(thresh) >= 2
+summary(keep)
+```
+
+
+```{r}
+y <- y[keep,keep.lib.size=FALSE]
+```
+
+```{r}
+y<- calcNormFactors(y)
+y
+```
+
+```{r}
+design<- model.matrix(~0+group)
+colnames(design) <- levels(group)
+design
+```
+
+```{r}
+par(mfrow= c(1,1))
+v<- voom(y,design, plot= TRUE)
+v
+```
+
+```{r}
+fit<- lmFit(v)
+names(fit)
+```
+
+Coding error is  still being resolved
+```{r}
+#cont.matrix<- makeContrasts(PRE.svPOST.s= pre.s - post.s, levels= design)
+```
+
+Almost to volcano plot figure however, some coding issues are still being resolved
+
+Multiple sequence analysis and Pathway analysis
+```{r}
+ESR1SequenceFile<- system.file("/Users/heatherotto/Downloads/ESR1_refseq_transcript-2.fasta")
+ESR1Sequences<- readAAStringSet("/Users/heatherotto/Downloads/ESR1_refseq_transcript-2.fasta")
+ESR1Sequences
+```
+
+```{r}
+FirstAlignment<- msa(ESR1Sequences)
+FirstAlignment
+```
+
+```{r}
+print(FirstAlignment,  show= "complete")
+```
+
+Pathway Analysis
+Since Pathway analysis directly connects to the results of RNA-seq, once the previous coding error unde the RNA-seq data is worked out, pathway analysis will be shown, for now, below is a comment of the skeleton of the input 
+```{r}
+#go<- goana(tr, species= "Homo Sapien") 
+#topGO(go, n=15)
+```
+
