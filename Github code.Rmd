@@ -4,143 +4,242 @@ output:
   html_document:
     df_print: paged
 ---
+Introduction:
+Background: Breast cancer is one of the most common cancers in women in the U.S with 1 in 8 developing a form of breast cancer in their lifetime. Breast cancer is often associated with dysregulated hormone pathways due to mutated genes, specifically mutated pathways involving the Estrogen Receptor, Progesterone Receptor, or human epidermal growth factor receptor 2 (HER2) though triple negative breast cancer is another form of highly aggressive breast cancer not associated with these receptor pathways. One preventative measure that can be done to reduce the risk of developing breast cancer is to maintain a healthy BMI via a physically active lifestyle. Another preventative measure that has found some success in reducing the risk of breast cancer is with bariatric surgery (weight-loss surgery). With the removal of excess adipose tissue, which contains a greater amount of pro-inflammatory cytokines that in high concentration can promote of cancer via mutations, the broader mechanism of how breast cancer is reduced is well understood. However, on the molecular level, how specific pathways and gene expression levels are affected by the loss of excess adipose tissue is less understood. 
 
-Scientific Question: Given the significant reduction for the risk of breast cancer after obese patients undergo bariatric surgery, what specific genes are responsible for the reduced risk and how do the expression levels of these certain genes change after the surgery? 
+Data was sourced from the NBCI (GEO) database, a link is provided below to the original data page, the sample information was only present in a series matrix format that was highly detailed and could not be adequately simplified, using the information provided by the matrix I created a simplified sample data txt file.
 
-Hypothesis: If the levels of Estrogen Receptor Alpha decrease after bariatric surgery, then by analyzing the specific gene (ESR1) expression levels of this protein and associated pathways will show a marked change from pre-weight loss surgery levels that are responsible for the preventative phenotype against breast cancer.   
+Scientific Question: Given the significant reduction in the risk of breast cancer after obese patients undergo bariatric surgery, are there significant expression level changes in genes associated with metabolic pathways linked to breast cancer such as BRCA1, BRCA2, PALB2, CHEK2, CDH1, PTEN, and P53? 
 
-The packages Edger and limma are used to filter out lowly expressed counts and to model the voom plot in RNA-seq and also EdgeR is used in Pathway analysis to gain access to cerrtain functions
+Hypothesis: If there are significant expression level changes in genes associated with breast cancer risk after bariatric surgery, then by analyzing the change in gene expression levels and associated pathways before and after weight loss surgery should reveal the molecular preventative phenotype against breast cancer.    
+
+For this project, methods RNA-sequencing and Multiple sequence alignment were done. As for analysis, volcano plots and functional annotation with GO  was  performed. The Volcano plot is intended to show the differentially expressed genes identified from the normalized and filtered raw count data that comes from the NBCI (GEO) database. This plot will show which  genes are significantly differentially expressed and will allow for a more narrow analysis on genes that were upregulated or downregulated. In turn, these identified genes can further be analyzed in the context of their pathways and any associations between these genes and their functions toward the development or prevention of cancer can be identified. Multiple sequence alignment, done through the Uniprot database was used to compare some of the proteins that were found to be either upregulated or downregulated in the prior analysis to a protein known to contribute to the development of breast cancer.   
+
+Packages:
+EdgeR- is a package within BiocManager that wasused to perform RNA-seq/ perform differential expression analysis and to find up/downregulated genes. Specifcally count data  canbe  stored in its object DEGlist.
+Limma- is another package under BiocManager that is necessary for differential expression analysis from the  given data, it can also  be used  to  analyze microarray data and  designing linear models.
+org.Hs.eg.db- is a package used for annotating data, here, it is specifically for Homo Sapiens, certain labels for genome wide annotation can be added such as "Geneid" and "symbol" usually by mapping with entrez gene identifiers.
+DESeq2- Another package under BiocManager that  is used in differential  expression analysis that estimates variance-mean dependence in count data,  with a negative binomial distribution model.
+msa- A Bioconductor package, Multiple Sequence Alignment aligns sequences such as nucleotides or amino  acids allowing for the direct comparison across certain regions of the sequences, algorithims including ClustalW, ClustalOmega and Muscle are integrated within this package. 
+
+If needed, all packages can be installed with the function install.packages including Bioconductor (BiocManager) alternatively, since these packages are under BiocManager, using BiocManager::install(c("", ...)) can also be used to install all packages at once  
+
 ```{r}
 library(edgeR)
 library(limma)
-
-```
-
-The package msa used to align multiple sequences from a single fasta file with its function msa
-```{r}
+library(org.Hs.eg.db)
+library(DESeq2)
 library(msa)
 ```
 
-
+Bioinformaatics Method 1: RNA-seq
+The  RNA-seq  data was downloaded from database NBCI (GEO) in the form of a csv file from [here] (https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE126803)
 ```{r}
 seqdata<- read.csv("/Users/heatherotto/Downloads/GSE126803_AI007_Readcounts.csv")
 seqdata
 ```
-
+Checking the dimensions of the sequence data that was read in, we have 19645 rows and 61 columns
 ```{r}
 dim(seqdata)
 ```
-
+Eliminating the first column so it can become the rownames and saving the change as countdata
 ```{r}
 countdata<- seqdata[,-(1)]
 countdata
 ```
-
+Making the original first column the rownames 
 ```{r}
 rownames(countdata) <- seqdata[,1]
 head(countdata)
 ```
-
-
 ```{r}
-sampleinfo<- read.delim("/Users/heatherotto/Sampleinfo copy.txt", row.names= NULL)
+colnames(countdata)
 ```
 
+There was no avaliable sample info originally other than the series matrix data which was exceptionally detailed, to get around this I made a simplified version of the sample info into a text file and uploaded it into R
+```{r}
+sampleinfo<- read.delim("/Users/heatherotto/Sampleinfo copy.txt", row.names= NULL)
+sampleinfo
+```
+After assigning column names, with a code check we can see there are extra unnecessary columns.
 ```{r}
 colnames(sampleinfo) <- colnames(sampleinfo)[2:ncol(sampleinfo)]
 sampleinfo
 ```
+The excess columns are eliminated in this chunk 
 ```{r}
-sampleinfo<- sampleinfo[, -(3:4)]
+sampleinfo<- sampleinfo[, -(3:5)]
 sampleinfo
 ```
+Checking to ensure the column names of the count data match the sample IDs 
+```{r}
+table(colnames(countdata)==sampleinfo$Sample_ID)
+```
+
+Using the edgeR object, count data parameters can be stored with the DEGList 
 ```{r}
 y<- DGEList(countdata)
-y
+y$counts
+y$samples
 ```
-
+Creating groups that can be added into the DEGlist 
 ```{r}
-group<- paste(sampleinfo$Surgery.Status, sep= ".")
+group<- paste(sampleinfo$Condition, sep= "_")
 group
 ```
-
+Further organizing the two groups by factoring
 ```{r}
 group<- factor(group)
 group
 ```
-
+Adding the greated groups into the DEGlist
 ```{r}
 y$samples$group<- group
 y$samples
 ```
 
-
-
+Filterring lowly expressed genes to improve the identification of differentially expressed genes. Counts per million function from edgeR is used to normalize the sequencing depths for the samples.  
 ```{r}
 CPM<- cpm(countdata)
 head(CPM)
 ```
-
+Identifying the proper cut off equivalent to the count of 10 for the library sizes.
 ```{r}
 plot(CPM[,1], countdata[,1], ylim= c(0,50), xlim= c(0,30))
-abline(v= 18)
-
+abline(v= 15)
+abline(h=10)
 ```
-
+Appkying the identified cut off to our cpm data and examining the logical matrix of results.
 ```{r}
-thresh<- CPM > 18
+thresh<- CPM > 15
 head(thresh)
 ```
-
+Examining the number of genes that meet the threshold, and keeping genes that have at least one True in each row
 ```{r}
 table(rowSums(thresh))
-keep<- rowSums(thresh) >= 2
+keep<- rowSums(thresh) >= 1
 summary(keep)
 ```
 
-
+Adjusting the library size in the DGElist to reflect the new established threshold changing the number of genes in the data for DE analysis  
 ```{r}
 y <- y[keep,keep.lib.size=FALSE]
-```
-
-```{r}
-y<- calcNormFactors(y)
 y
 ```
+Normalizing for composition bias ans adding the new factors to the DGEList, adjusting library sizes.
+```{r}
+y<- calcNormFactors(y)
+y$samples
+```
 
+A design matrix is made to set up the comparison between two conditions, here its between pre surgery and post surgery.From the group data we can create the formula that will be fitted to the contrast matrix later. The output shows us which samples correspond to each group indicated by a 1.
 ```{r}
 design<- model.matrix(~0+group)
-colnames(design) <- levels(group)
+colnames(design) <- c("post_surgery", "pre_surgery")
 design
 ```
 
+
+With the limma package we can visualize the mean-variance trend, this shows if there  are  genes that  are highly variable. Different parameters are also contained in the v object and can be accessed with the function names. 
 ```{r}
 par(mfrow= c(1,1))
 v<- voom(y,design, plot= TRUE)
 v
 ```
 
+Under the package limma, we fit the linear model
 ```{r}
 fit<- lmFit(v)
 names(fit)
 ```
 
-Coding error is  still being resolved
+Comparisons  between the two groups is identified which  are also the columns of the design matrix, the results will put out a contrast matrix.
 ```{r}
-#cont.matrix<- makeContrasts(PRE.svPOST.s= pre.s - post.s, levels= design)
+cont.matrix<- makeContrasts(Pre.sVsPost.s = pre_surgery-post_surgery, levels= design)
+cont.matrix
 ```
 
-Almost to volcano plot figure however, some coding issues are still being resolved
-
-Multiple sequence analysis and Pathway analysis
+Once more with limma, apply the contrasts matrix to the fit ibject to get the paramters of comparison. 
 ```{r}
-ESR1SequenceFile<- system.file("/Users/heatherotto/Downloads/ESR1_refseq_transcript-2.fasta")
-ESR1Sequences<- readAAStringSet("/Users/heatherotto/Downloads/ESR1_refseq_transcript-2.fasta")
-ESR1Sequences
+fit.cont<- contrasts.fit(fit, cont.matrix)
+fit.cont
+```
+The eBayes function for empirical shrinkage on variances, estimates on moderated t- statistics, and p-values is needed to display the volcano plot, the dimensions are also shown.  
+```{r}
+fit.cont<- eBayes(fit.cont)
+dim(fit.cont)
+```
+
+DecideTests from limma with adjusted parameters for log fold change and adjust method are necessary to get DE genes from the contrasts- the default settings yielded no DE genes, however with the changeed parameters, DE genes were detected. 
+```{r}
+summa.fit<- decideTests(fit.cont, method="separate", adjust.method ="none", p.value=0.05, lfc=log2(1))
+summary(summa.fit)
+```
+ 
+Bioinformatic Analysis 1 
+From the fit.cont matrix by limma, the volcano plot is generated, the volcano plot shows the top 50 differentially expressed genes (noted gene number in blue). On the x-axis, the differential expression of the genes is measured on a log 2 Fold change scale, the genes below zero are genes with decreased expression while the genes above zero have increased expression. The y-axis contains the P-values on a -log10 scale this indicates the their significance of differential expression. 
+```{r}
+show_volcano<- volcanoplot(fit.cont, coef=1, highlight = 50, main= "Pre.sVsPost.s")
+show_volcano
+```
+
+Global variables are avaliable throughout the  entire  program, they can be changed and accessed from anywhere in the program
+Local variables only exist within a certain function and do not operate beyond the calling of that function. 
+
+Bioinformatic Analysis 2
+Table with functional annotation of GO pathway
+
+Next, to analyze the identified DE genes from the volcano plot, we will use goana but first we need to run some data through DESeq functions. 
+```{r}
+y2<- estimateDisp(y, design, robust=TRUE)
+fit2<- glmQLFit(y2, design, robust=TRUE)
+head(fit2$coefficients)
+```
+
+Thee output is similar to the RNA-seq workflow above.
+```{r}
+res<- glmQLFTest(fit2, contrast=cont.matrix)
+topTags(res)
+```
+The normalization of the gene libraries resulted in a smaller subset of genes being differentially expressed, 
+```{r}
+is.de<- decideTests(res, method= "separate", adjust.method = "none", p.value= 0.05, lfc=log2(1))
+summary(is.de)
+```
+
+Separating the upregulated genes from the down regulated into tables based on the results from the decideTests function. 
+```{r}
+tab<-topTags(res, n=Inf, sort="none")$table
+UpGenes<- tab[is.de==1,]
+DownGenes <- tab[is.de==-1,]
+```
+
+Table of upregulated genes
+```{r}
+UpGenes
+go_u<- goana(rownames(UpGenes), species="Hs")
+topGO(go_u, n=50)
+```
+
+Table of downregulated genes
+```{r}
+DownGenes
+goD<-goana(rownames(DownGenes),species="Hs")
+topGO(goD,ont="BP", n=50)
+```
+
+
+Bioinformatic Method 2:
+Multiple sequence analysis  
+Here we are aligning two proteins, the two proteins come from the same protein-coding gene family CYP, from our results CYP27A1 was a downregulated gene, this gene functions in the metabolism of estrogen and has been linked to breast cancer in at least one study, however, its is  less clear than its family member CYP19A1- therefore we are performing a multiple sequence alignment on the protein products CYP19A1= P11511 and CYP27A1= Q02318.      
+```{r}
+CYPSequenceFile<- system.file("https://www.uniprot.org/align/A2022031492C7BAECDB1C5C413EE0E0348724B6820178B45.fasta", package="msa" )
+CYPSequences<- readAAStringSet("https://www.uniprot.org/align/A2022031492C7BAECDB1C5C413EE0E0348724B6820178B45.fasta")
+CYPSequences
 ```
 
 ```{r}
-FirstAlignment<- msa(ESR1Sequences)
+FirstAlignment<- msa(CYPSequences)
 FirstAlignment
 ```
 
@@ -148,10 +247,18 @@ FirstAlignment
 print(FirstAlignment,  show= "complete")
 ```
 
-Pathway Analysis
-Since Pathway analysis directly connects to the results of RNA-seq, once the previous coding error unde the RNA-seq data is worked out, pathway analysis will be shown, for now, below is a comment of the skeleton of the input 
-```{r}
-#go<- goana(tr, species= "Homo Sapien") 
-#topGO(go, n=15)
-```
+From the previous analyses there appears to be only limited evidence that bariatric surgery reduces breast cancer risk on a genetic level, possibly the reduction in adipose tissue concentration overall decreases the concentration of estrogen being produced, which decreases the risk for breast cancer, rather than a significant gene expression level change taking place. Based on the  parameters set by the differential expression analysis, the inability to use  standard methods of adjustment within the function decideTests was telling that log fold changes in gene expression before and after surgery were not very pronunced and not significant under standard measures. 
+
+Since the significance of the expression level change only occurs under adjusted parameters, it appears that the genetic preventative phenotype against breast cancer can not be determined due  to a lack of significantly differentially expressed genes, further testing, possibly with a larger sample size may change this conclusion however given the results from the present data, my hypothesis was incorrect. 
+
+Follow up questions:
+Could the risk of developing breast cancer be more pronounced or yield more significant results by specifically analyzing pre-menopausal and post-menopausal patients who have undergone bariatric surgery? 
+
+Would genetic sequencing of adipose tissue in women who have maintained a physically active lifestyle and adipose tissue women who had recently undergone bariatric sugery reveal differences in the expression of certain genes related to breast cancer?   
+
+
+
+
+
+
 
